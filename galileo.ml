@@ -670,14 +670,13 @@ let mainconstraint
               evolution := evolast !evolution ;
               file := !file + 1 ;
             end ;
-          let nl = Out_channel.newline stdout in
           !lasttime |> Float.to_string |> Out_channel.output_string stdout ;
-          nl;
+          Out_channel.newline stdout;
           Time.now () |> Time.to_string |> Out_channel.output_string stdout ;
-          nl;
+          Out_channel.newline stdout;
           path |> Out_channel.output_string stdout ;
-          nl;
-          nl;
+          Out_channel.newline stdout;
+          Out_channel.newline stdout;
         end
     end;
 
@@ -1418,135 +1417,6 @@ let command =
       )
     )
 
-(*	
+	
 let () =
-  Command.run  command
-*)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  Core.Command.run command
