@@ -248,17 +248,6 @@ let jsonevolution framearray =
 
 let approxtimeframes res sizeinbytes = (4.717773988047213 *. res -. sizeinbytes ) /. ( -18.926682809367268 -. 141.59813374610232 *. res )
 
-(*
-open Core_bench.Std
-open Core
-
-let run_bench functionlist testdata =
-  let tests = List.init ( List.length functionlist ) ~f:(
-    fun i -> Bench.Test.create ~name:(Int.to_string i) (fun () -> ignore ( ( List.nth_exn functionlist i ) testdata ) ) 
-  ) in
-  Command.run (Bench.make_command tests)
-*)
-
 type evolution = { frontmatter : (string * Yojson.Basic.t ) list ; timeframes : time_frame array }
 
 let frontget key evo =
@@ -383,7 +372,7 @@ let rec which pairlist =
     | []     -> None
     | a :: t -> match a with
                   | ( true  , b ) -> Some  b 
-                  | ( false , _ ) -> which t
+                  | ( false , _ ) -> ( which [@tailcall] ) t
 
 (* For testing we need something that emulates the indices function we wrote in the mathematica notebook. *)
 
@@ -616,72 +605,7 @@ let arraytail ar =
   let n = Array.length ar in
   ar.(n-1)
 
-let mainconstraint 
-  ~inevolution
-  ~timelimit
-  ~checkpointfrequency
-  ~cn
-  ~checkpointtfs
-  ?( charspeedtest = ( fun _ -> 1.0 ) )
-  ?( fileind = 1 )
-  ~path
-  () =
 
-  let evolution = ref ( inevolution ) in (* the ref evolution holds the data to eventually be written *)
-  let frame = ref ( arraytail( inevolution.timeframes ) ) in (* the ref frame holds the current data *)
-
-  let deltax = 2.0 *. pi /. Float.of_int ( Array.length ( (!frame).data.(0) ) ) in (* deltax is the spatial separation computed supposing the domain is the circle with coordinates in 0 to 2pi *)
-  let evolveonestep = (* here we set which evolver to use based on whether we want to do Crank-Nicolson or not *)
-    match cn with
-      | "false" -> evolveframe
-      | "true"  -> cnevolveframe
-  in
-
-  let lasttime  = ref (!frame).time  in
-  let lastprinttime  = ref ( timenow () )  in 
-  let file = ref fileind in
-
-  
-  while begin let open Float in ( ( (!frame).time    < timelimit ) && ( not ( Sys.file_exists "stop" ) ) ) end do
-
-    let deltat = 
-      let schemeconstant = 
-        match cn with
-          | "false" -> 1.0 
-          | "true"  -> 1.0 (* if this value is 2 or higher, there is nearly immediate NaN for generic data. values lower than 1 don't seem to provide any benefit. *)
-          | _       -> 1.0 
-      in
-      let characteristicspeed = charspeedtest !frame in
-      deltax *. schemeconstant *. characteristicspeed
-    in
-
-    begin
-      frame := evolveonestep !frame deltat deltax ;
-      if begin let open Float in ( (!frame).time   > ( !lasttime +. checkpointfrequency ) ) end then 
-        begin
-          evolution := { frontmatter = (!evolution).frontmatter ; timeframes = Array.append (!evolution).timeframes [| !frame |] } ; (* append a new checkpoint *)
-          lasttime := (!frame).time ; (* update the last iterator we checkpointed *)
-          lastprinttime := timenow () ;
-          if checkpointtfs < ( (!evolution).timeframes |> Array.length ) then
-            begin
-              jsonwritepretty ( !evolution |> evobutlast |> jsonextra ) ( path ^ "." ^ ( !file |> Int.to_string ) ^ ".json" ) ;
-              evolution := evolast !evolution ;
-              file := !file + 1 ;
-            end ;
-          !lasttime |> Float.to_string |> Out_channel.output_string stdout ;
-          Out_channel.newline stdout;
-          Time.now () |> Time.to_string |> Out_channel.output_string stdout ;
-          Out_channel.newline stdout;
-          path |> Out_channel.output_string stdout ;
-          Out_channel.newline stdout;
-          Out_channel.newline stdout;
-        end
-    end;
-
-  done ;
-  evolution := { frontmatter = (!evolution).frontmatter ; timeframes = Array.append (!evolution).timeframes [| !frame |] } ;
-
-  jsonwritepretty ( !evolution |> evobutlast |> jsonextra ) ( path ^ "." ^ ( !file |> Int.to_string ) ^ ".json" )
 
 let sort ~evolution =
   let data = ref evolution.timeframes in
@@ -918,7 +842,6 @@ let pget lrc f =
      l   = oo L   f.l   ;
      pil = oo Pil f.pil 
   }
-  
 
 (* The vector on the right side should then be the sum of rhsummand over some choices of indices. *)
 
@@ -1143,30 +1066,6 @@ let random_soln_2 n x =
                           ) } in
     outsoln |> solvecostraintsf
 
-let bergerify s =
-  let z _ = 0.0 in
-  {
-    deg = s.deg ;
-    p   = z     ;
-    pip = s.pip ;
-    q   = s.q   ;
-    piq = z     ;
-    l   = z     ;
-    pil = ( fun i -> match i with | ( Cosine , 0 ) -> s.pil ( Cosine , 0 ) | _ -> 0.0 )
-  }
-
-let bergerify2 s =
-  let z _ = 0.0 in
-  {
-    deg = s.deg ;
-    p   = s.p   ;
-    pip = s.pip ;
-    q   = s.q   ;
-    piq = z     ;
-    l   = s.l   ;
-    pil = s.pil
-  }
-
 let b_soln i x = 
   let s = random_soln_2 i x in
   let c f = ( fun i -> match i with
@@ -1175,10 +1074,7 @@ let b_soln i x =
             ) in
   { s with piq = c s.piq } |> solvecostraintsf 
 
-let bev_soln i x = 
-  let s = random_soln_2 i x in
-  let z = ( fun _ -> 0.0 ) in
-  { s with p = z ; piq = z ; l = z }
+
 
 let gen_soln = random_soln_2
 
@@ -1256,85 +1152,78 @@ let writenewreses file reslist =
   let writeoneres res = { ev with timeframes = [| |] } |> frontreplace ( "resolution" , `Int res ) |> jsonextra |> ( fun evo -> jsonwritepretty evo ( basepath ^ "_" ^ ( Int.to_string res ) ^ ".json" ) ) in
   List.map ~f:writeoneres reslist
 
-
-let processbevline instring =
-  let isfloat a =
-    match a with
-      | '0' -> true
-      | '1' -> true  
-      | '2' -> true
-      | '3' -> true
-      | '4' -> true
-      | '5' -> true
-      | '6' -> true
-      | '7' -> true
-      | '8' -> true
-      | '9' -> true
-      | '-' -> true
-      | '+' -> true
-      | 'e' -> true
-      | 'E' -> true
-      | '.' -> true
-      | '\t'-> true
-      | _   -> false
-  in
-  let filteredstringlist = String.filter instring ~f:isfloat in
-  let istab x = ( if phys_equal x '\t' then true else false ) in
-  let filteredstringliststrippedtrailingtab = String.strip filteredstringlist ~drop:istab in
-  let stringlist = String.split filteredstringliststrippedtrailingtab ~on:( '\t' ) in
-  let floatlist = List.map stringlist ~f:Float.of_string in
-  let floatarray = Array.of_list floatlist in
-  floatarray
-
-let getbevfile path = 
-  let linelist = In_channel.read_lines path in
-  let containsnumeral instring =  String.contains instring '.'   in
-  let checkedifavg = List.filter ~f:containsnumeral linelist in
-  let listoffloatarrays = List.map checkedifavg ~f:processbevline in
-  let floatarrayarray = Array.of_list listoffloatarrays in
-  floatarrayarray
-
-let processbevinputs pathtodir g=
-  let checktrailingslash string =
-    let n = - 1 + String.length string in
-    let lastchar = String.get string n in
-    match lastchar with
-      | '/' -> string
-      | _   -> string^"/"
-  in
-  let path = checktrailingslash pathtodir in
-  let avg      = getbevfile ( path^"gwdyavg.txt" ) in
-  let p        = getbevfile ( path^"gwdyp.txt" )   in
-  let pip      = getbevfile ( path^"gwdypip.txt" ) in
-  let q        = getbevfile ( path^"gwdyq.txt" )   in
-  let piq      = getbevfile ( path^"gwdypiq.txt" ) in
-  let lambda   = getbevfile ( path^"gwdyl.txt" )   in
-  let pilambda = getbevfile ( path^"gwdypil.txt" ) in
-  Array.init ( Array.length p ) ~f:( fun i -> { time = ( g avg.(i).(0) ) ; data = [| p.(i) ; pip.(i) ; q.(i) ; piq.(i) ; lambda.(i) ; pilambda.(i) |] } )
-
-let bevtojsonfile f pathtobevdata pathtojsonfile = 
-  let bevtimeframearray = processbevinputs pathtobevdata f in
-  let jsonoutput = jsonevolution bevtimeframearray in
-  jsonwritepretty jsonoutput pathtojsonfile
-
-
 (*
 
-Need to modify the program to assume that execution parameters are given in the command line argument.
-Things that come from the script are usually:
-	-path to the folder where we should write the output data
-	-the name we should use for the output file
-	-the spatial resolution
-	-time limit
-	-print frequency
-That's all.
+Constraints stuff ends here.
 
-Here's what we need to do:
-	-the command line parser needs to separate the input into a path and a filename, which we can then use for the first two
-	-the resolution item needs to do the following: if the timeframes are not empty, read a timeframe and get the resolution from there, else look in the frontmatter for a resolution parameter
-	-time time limit and print frequency also need to be specified in the frontmatter
+ *)
 
-*)
+let mainconstraint 
+  ~inevolution
+  ~timelimit
+  ~checkpointfrequency
+  ~cn
+  ~checkpointtfs
+  ?( charspeedtest = ( fun _ -> 1.0 ) )
+  ?( fileind = 1 )
+  ~path
+  () =
+
+  let evolution = ref ( inevolution ) in (* the ref evolution holds the data to eventually be written *)
+  let frame = ref ( arraytail( inevolution.timeframes ) ) in (* the ref frame holds the current data *)
+
+  let deltax = 2.0 *. pi /. Float.of_int ( Array.length ( (!frame).data.(0) ) ) in (* deltax is the spatial separation computed supposing the domain is the circle with coordinates in 0 to 2pi *)
+  let evolveonestep = (* here we set which evolver to use based on whether we want to do Crank-Nicolson or not *)
+    match cn with
+      | "false" -> evolveframe
+      | "true"  -> cnevolveframe
+  in
+
+  let lasttime  = ref (!frame).time  in
+  let lastprinttime  = ref ( timenow () )  in 
+  let file = ref fileind in
+
+  
+  while begin let open Float in ( ( (!frame).time    < timelimit ) && ( not ( Sys.file_exists "stop" ) ) ) end do
+
+    let deltat = 
+      let schemeconstant = 
+        match cn with
+          | "false" -> 1.0 
+          | "true"  -> 1.0 (* if this value is 2 or higher, there is nearly immediate NaN for generic data. values lower than 1 don't seem to provide any benefit. *)
+          | _       -> 1.0 
+      in
+      let characteristicspeed = charspeedtest !frame in
+      deltax *. schemeconstant *. characteristicspeed
+    in
+
+    begin
+      frame := evolveonestep !frame deltat deltax ;
+      if begin let open Float in ( (!frame).time   > ( !lasttime +. checkpointfrequency ) ) end then 
+        begin
+          evolution := { frontmatter = (!evolution).frontmatter ; timeframes = Array.append (!evolution).timeframes [| !frame |] } ; (* append a new checkpoint *)
+          lasttime := (!frame).time ; (* update the last iterator we checkpointed *)
+          lastprinttime := timenow () ;
+          if checkpointtfs < ( (!evolution).timeframes |> Array.length ) then
+            begin
+              jsonwritepretty ( !evolution |> evobutlast |> jsonextra ) ( path ^ "." ^ ( !file |> Int.to_string ) ^ ".json" ) ;
+              evolution := evolast !evolution ;
+              file := !file + 1 ;
+            end ;
+          !lasttime |> Float.to_string |> Out_channel.output_string stdout ;
+          Out_channel.newline stdout;
+          Time.now () |> Time.to_string |> Out_channel.output_string stdout ;
+          Out_channel.newline stdout;
+          path |> Out_channel.output_string stdout ;
+          Out_channel.newline stdout;
+          Out_channel.newline stdout;
+        end
+    end;
+
+  done ;
+  evolution := { frontmatter = (!evolution).frontmatter ; timeframes = Array.append (!evolution).timeframes [| !frame |] } ;
+
+  jsonwritepretty ( !evolution |> evobutlast |> jsonextra ) ( path ^ "." ^ ( !file |> Int.to_string ) ^ ".json" )
 
 
 let main inputpath =
