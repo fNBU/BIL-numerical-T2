@@ -91,7 +91,6 @@ let changeframe2 frame deltat deltax =
   
   let p   i = d0.(0).(i) in
   let pip i = d0.(1).(i) in
-  let q   i = d0.(2).(i) in
   let piq i = d0.(3).(i) in
   let l   i = d0.(4).(i) in
   let pil i = d0.(5).(i) in
@@ -287,7 +286,6 @@ let frontgetdef key converter default evo =
 let evolast evo =
   let arlast ar = ar.(Array.length ar - 1) in
   let lastframe = arlast evo.timeframes in
-  let lasttime = lastframe.time in
   { evo with timeframes = [| lastframe |] }
 
 let evobutlast evo =  
@@ -1171,7 +1169,6 @@ let bergerify2 s =
 
 let b_soln i x = 
   let s = random_soln_2 i x in
-  let z = ( fun _ -> 0.0 ) in
   let c f = ( fun i -> match i with
              | ( Cosine , 0 ) -> 0.0
              | x              -> f x 
@@ -1387,7 +1384,7 @@ let main inputpath =
     exp( -1.0 *. t ) *. ( Array.fold pilambda ~init:Float.infinity ~f:Float.min )
   in
 
-  let output = mainconstraint 
+  let _ = mainconstraint 
     ~inevolution:input
     ~timelimit:timelimit
     ~checkpointfrequency:checkpointfrequency
@@ -1408,7 +1405,6 @@ let filename_param =
 let command =
   Command.basic
     ~summary:"evolve t2 symmetric initial data"
-    ~readme:(fun () -> "More detailed information")
     (
       Command.Param.map filename_param ~f:(
         fun filename -> (

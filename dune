@@ -1,5 +1,5 @@
 ;; This declares the galileo executable implemented by galileo.ml
 (executable
  (name galileo)
- (flags (:standard -w -6-8-26))
+ (flags (:standard -w -6-8))
  (libraries yojson core lacaml core_kernel core_bench))
