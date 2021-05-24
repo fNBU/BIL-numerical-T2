@@ -1,14 +1,5 @@
-
 open Core_kernel
 open Lacaml.D
-
-(*
-=============================================================================================
-                                                                                            =
-This is where I'm keeping the functions that I'm going to use in my Galileo numerical code. =
-                                                                                            =
-=============================================================================================
-*)
 
 let pwd = Sys.getcwd ()
 
@@ -84,7 +75,7 @@ let (  *.>  ) b c =
 
 let (  ->>  ) b c = b +>> ( (-1.0) *.> c ) 
 
-let changeframe2 frame deltat deltax accuracy =
+let changeframe2 frame deltat deltax =
   let exp c = Stdlib.exp c in
   let d0 = frame.data in
   let n = Array.length ( d0.(0) ) in
@@ -137,55 +128,18 @@ let changeframe2 frame deltat deltax accuracy =
 
 
 
-let cnchangeframe frame deltat deltax accuracy =
-  let tempout0 = frame +>> ( changeframe2 frame deltat deltax accuracy ) in
+let cnchangeframe frame deltat deltax  =
+  let tempout0 = frame +>> ( changeframe2 frame deltat deltax ) in
   let tempdata1 = 0.5 *.> ( frame +>> tempout0 ) in
-  let tempout1 = frame +>> ( changeframe2 tempdata1 deltat deltax accuracy ) in
+  let tempout1 = frame +>> ( changeframe2 tempdata1 deltat deltax ) in
   let tempdata2 = 0.5 *.> ( frame +>> tempout1 ) in
-  changeframe2 tempdata2 deltat deltax accuracy
+  changeframe2 tempdata2 deltat deltax
 
-let evolveframe frame deltat deltax accuracy =
-  frame +>> ( changeframe2 frame deltat deltax accuracy )
+let evolveframe frame deltat deltax  =
+  frame +>> ( changeframe2 frame deltat deltax )
 
-let cnevolveframe frame deltat deltax accuracy =
-  frame +>> ( cnchangeframe frame deltat deltax accuracy )
-
-let bevcnchangeframe frame deltat deltax accuracy =
-  let nexttime = frame.time +. deltat in
-
-  let tempframe0 = { time = nexttime ; data = frame.data } in
-
-  let tempout0 = frame +>> ( 
-                              0.5 *.> ( 
-                                            ( changeframe2 frame deltat deltax accuracy      ) 
-                                        +>> ( changeframe2 tempframe0 deltat deltax accuracy ) 
-                                      ) 
-                           ) in
-
-  let tempframe1 = { time = nexttime ; data = tempout0.data } in
-
-  let tempout1 = frame +>> ( 
-                              0.5 *.> ( 
-                                            ( changeframe2 frame deltat deltax accuracy      ) 
-                                        +>> ( changeframe2 tempframe1 deltat deltax accuracy ) 
-                                      ) 
-                           ) in
-
-  let tempframe2 = { time = nexttime ; data = tempout1.data } in
-
-  let tempchange =  ( 
-                              0.5 *.> ( 
-                                            ( changeframe2 frame deltat deltax accuracy      ) 
-                                        +>> ( changeframe2 tempframe2 deltat deltax accuracy ) 
-                                      ) 
-                           ) in
-
-  let tempchange2 = { time = deltat ; data = tempchange.data } in
-
-  tempchange2
-
-let bevcnevolveframe frame deltat deltax accuracy =
-  frame +>> ( bevcnchangeframe frame deltat deltax accuracy )
+let cnevolveframe frame deltat deltax  =
+  frame +>> ( cnchangeframe frame deltat deltax  )
 
 let listtoarray2 listlist = List.to_array ( List.map listlist ~f:( fun x  -> List.to_array x ) ) 
 
@@ -313,7 +267,7 @@ let frontget key evo =
   evo.frontmatter |> List.map ~f:( rep )
 
 let frontdelete key evo = 
-  let newfront = evo.frontmatter |> List.filter ~f:( fun ( x , y ) -> not ( String.equal x key ) ) in
+  let newfront = evo.frontmatter |> List.filter ~f:( fun ( x , _ ) -> not ( String.equal x key ) ) in
   { evo with frontmatter = newfront }
 
 let frontadd pair evo = 
@@ -338,7 +292,7 @@ let evolast evo =
 
 let evobutlast evo =  
   let n = Array.length evo.timeframes in
-  { evo with timeframes = ( evo.timeframes |> Array.filteri ~f:( fun i x -> i < ( n - 1 ) ) ) }
+  { evo with timeframes = ( evo.timeframes |> Array.filteri ~f:( fun i _ -> i < ( n - 1 ) ) ) }
 
 let importdataevo path = 
   let member = Yojson.Basic.Util.member  in
@@ -534,7 +488,7 @@ let solnf_of_ar ar =
        }
      end
    | _ -> 
-       let zero x = 0.0 in
+       let zero _ = 0.0 in
        { 
          deg = 0 ; 
          p   = zero ; 
@@ -607,7 +561,7 @@ let initialtime evolution =
   let frontmatter = evolution.frontmatter in
   let selector input = 
     match input with
-      | ("initial time",x) -> true
+      | ("initial time",_) -> true
       | _ -> false
   in
   let strip input = 
@@ -669,9 +623,8 @@ let mainconstraint
   ~timelimit
   ~checkpointfrequency
   ~cn
-  ~accuracy
   ~checkpointtfs
-  ?( charspeedtest = ( fun timeframe -> 1.0 ) )
+  ?( charspeedtest = ( fun _ -> 1.0 ) )
   ?( fileind = 1 )
   ~path
   () =
@@ -684,7 +637,6 @@ let mainconstraint
     match cn with
       | "false" -> evolveframe
       | "true"  -> cnevolveframe
-      | _       -> bevcnevolveframe
   in
 
   let lasttime  = ref (!frame).time  in
@@ -706,7 +658,7 @@ let mainconstraint
     in
 
     begin
-      frame := evolveonestep !frame deltat deltax accuracy ;
+      frame := evolveonestep !frame deltat deltax ;
       if begin let open Float in ( (!frame).time   > ( !lasttime +. checkpointfrequency ) ) end then 
         begin
           evolution := { frontmatter = (!evolution).frontmatter ; timeframes = Array.append (!evolution).timeframes [| !frame |] } ; (* append a new checkpoint *)
@@ -842,18 +794,18 @@ let contract f l =
 (* Works correctly. *)
 
 let b i k l =  
-  let ( trash , n ) = k in
+  let ( _ , n ) = k in
   contract ( fun j -> ( a i j l ) *. ( d k j ) ) n
 
 (* This is here as part of a hack to resolve the fact that the lhs is not invertible. *)
 
 let mdrop1 i m =
-  let drop i ar = Array.filteri ar ~f:( fun j p -> not ( j = i ) ) in
+  let drop i ar = Array.filteri ar ~f:( fun j _ -> not ( j = i ) ) in
   let ardrop i ar = ar |> drop i in
   m |> Lacaml.D.Mat.to_array |> ardrop i |> Lacaml.D.Mat.of_array
 
 let mdrop2 i j m =
-  let drop i ar = Array.filteri ar ~f:( fun j p -> not ( j = i ) ) in
+  let drop i ar = Array.filteri ar ~f:( fun j _ -> not ( j = i ) ) in
   let t = Array.transpose_exn in
   let ardrop i j ar = ar |> drop i |> t |> drop j |> t in
   m |> Lacaml.D.Mat.to_array |> ardrop i j |> Lacaml.D.Mat.of_array
@@ -903,11 +855,11 @@ let rhsummand ( f , g ) iinds jinds n =
     let l = List.nth_exn ( indices ( 2 * n ) ) k in
     match List.length iinds with
      | 1 -> begin
-              let i::x = iinds in
+              let i::_ = iinds in
               contract ( fun j -> ( b i j l ) *. ( f i ) *. ( g j ) ) n
             end
      | _ -> begin
-              let j::x = jinds in
+              let j::_ = jinds in
               contract ( fun i -> ( b i j l ) *. ( f i ) *. ( g j ) ) n
             end
   in
@@ -982,7 +934,7 @@ let rhs fglist n =
 
   let piqcols = inds Right Piq n  |> List.map ~f:( fun i -> rhsummand ( piq  , q ) [ i ]         ( indices n ) n ) in
 
-  let zero = [| Array.init ( 4 * n + 1 ) ~f:( fun x -> 0.0 ) |] |> Array.transpose_exn in
+  let zero = [| Array.init ( 4 * n + 1 ) ~f:( fun _ -> 0.0 ) |] |> Array.transpose_exn in
 
   [ pipcols ; lcols ; piqcols ] |> List.join |> List.fold_left ~f:( +|||| ) ~init:zero |> ( fun m -> -1.0 *.|| m ) |> makemat
 
@@ -991,11 +943,11 @@ let lhscol ( f , g ) iinds jinds n =
     let l = List.nth_exn ( indices ( 2 * n ) ) k in
     match List.length iinds with
      | 1 -> begin
-              let i::x = iinds in
+              let i::_ = iinds in
               contract ( fun j -> ( b i j l ) *. ( g j ) ) n
             end
      | _ -> begin
-              let j::x = jinds in
+              let j::_ = jinds in
               contract ( fun i -> ( b i j l ) *. ( f i ) ) n
             end
   in
@@ -1018,7 +970,7 @@ let solvesystem a b =
   c
 
 let solvecostraintsf dat =
-  let ( n , fg  ) = dat |> fgpairs in
+  let ( n , _  ) = dat |> fgpairs in
   let ( _ , lfg ) = dat |> pget Left                                        |> fgpairs in
   let ( _ , rfg ) = dat |> ( fun f -> ( pget Right f ) +~ ( pget Left f ) ) |> fgpairs in
   let m = lhs lfg n in
@@ -1026,10 +978,10 @@ let solvecostraintsf dat =
   let [| v |] = solvesystem m x |> Lacaml.D.Mat.to_array |> Array.transpose_exn in
   let [| 
         [| ops   ; opc   |] ;
-        [| opips ; opipc |] ;
+        [| _     ; opipc |] ;
         [| oqs   ; oqc   |] ;
         [| opiqs ; opiqc |] ;
-        [| ols   ; olc   |] ;
+        [| _     ; olc   |] ;
         [| opils ; opilc |] 
       |] = dat |> ar_of_solnf in
 
@@ -1092,7 +1044,7 @@ let hom s d0 d1=
   match s with
    | 0.0 -> ld0 +~ rd0
    | 1.0 -> ld1 +~ rd1
-   | x   -> ( lin s ld0 ld1 ) +~ ( lin ( s ** ( 4.0 *. n ) ) rd0 rd1 ) 
+   | _   -> ( lin s ld0 ld1 ) +~ ( lin ( s ** ( 4.0 *. n ) ) rd0 rd1 ) 
   end 
   |> solvecostraintsf
 
@@ -1101,7 +1053,7 @@ let arraymap2 ar f = Array.map ar ~f:( fun x -> Array.map x ~f:f )
 let arraymap3 ar f = Array.map ar ~f:( fun x -> arraymap2 x f )
 
 let zerosoln = 
-  let z i = 0.0 in
+  let z _ = 0.0 in
   {
      deg = 0 ;
      p   = z ;
@@ -1124,7 +1076,7 @@ let table l ~f =
 let random_soln n x =
   let rec h () = 
     let r () = ( Random.float ( 2.0 *. x ) ) -. x in
-    let rands = Array.init 6 ~f:( fun i -> Array.init ( 2 * n + 1 ) ~f:(fun x -> r () ) ) in
+    let rands = Array.init 6 ~f:( fun _ -> Array.init ( 2 * n + 1 ) ~f:(fun _ -> r () ) ) in
     let f j ( x , i ) = match i < n+1 with
                      | true -> begin
                              match x with 
@@ -1163,7 +1115,7 @@ let random_soln n x =
 
 let random_soln_2 n x =
     let r () = ( Random.float ( 2.0 *. x ) ) -. x in
-    let rands = Array.init 6 ~f:( fun i -> Array.init ( 2 * n + 1 ) ~f:(fun x -> r () ) ) in
+    let rands = Array.init 6 ~f:( fun _ -> Array.init ( 2 * n + 1 ) ~f:(fun _ -> r () ) ) in
     let f j ( x , i ) = match i < n+1 with
                      | true -> begin
                              match x with 
@@ -1195,7 +1147,7 @@ let random_soln_2 n x =
     outsoln |> solvecostraintsf
 
 let bergerify s =
-  let z i = 0.0 in
+  let z _ = 0.0 in
   {
     deg = s.deg ;
     p   = z     ;
@@ -1207,7 +1159,7 @@ let bergerify s =
   }
 
 let bergerify2 s =
-  let z i = 0.0 in
+  let z _ = 0.0 in
   {
     deg = s.deg ;
     p   = s.p   ;
@@ -1220,7 +1172,7 @@ let bergerify2 s =
 
 let b_soln i x = 
   let s = random_soln_2 i x in
-  let z = ( fun i -> 0.0 ) in
+  let z = ( fun _ -> 0.0 ) in
   let c f = ( fun i -> match i with
              | ( Cosine , 0 ) -> 0.0
              | x              -> f x 
@@ -1229,14 +1181,14 @@ let b_soln i x =
 
 let bev_soln i x = 
   let s = random_soln_2 i x in
-  let z = ( fun i -> 0.0 ) in
+  let z = ( fun _ -> 0.0 ) in
   { s with p = z ; piq = z ; l = z }
 
 let gen_soln = random_soln_2
 
 let q_soln i x = 
   let s = random_soln_2 i x in
-  let z = ( fun i -> 0.0 ) in
+  let z = ( fun _ -> 0.0 ) in
   { s with piq = z } |> solvecostraintsf
 
 let take_soln_norm f i x norm =
@@ -1250,7 +1202,7 @@ let take_soln_norm f i x norm =
 
 let pol_soln i x = 
   let s = random_soln_2 i x  in
-  let z = ( fun i -> 0.0 ) in
+  let z = ( fun _ -> 0.0 ) in
   { s with piq = z } |> solvecostraintsf |> ( fun s -> { s with q = z ; piq = z } )
 
 let write_solution soln tl chk res freq basepath =
@@ -1277,7 +1229,7 @@ let gen_and_write_soln_over_reses kind order size tl chk freq basepath reslist =
      | "polarised" -> pol_soln order size
      | _ -> 
          begin
-           let z i = 0.0 in
+           let z _ = 0.0 in
            { deg = 0 ; p = z ; pip = z ; q = z ; piq = z ; l = z ; pil = z }
         end
   in
@@ -1441,7 +1393,6 @@ let main inputpath =
     ~timelimit:timelimit
     ~checkpointfrequency:checkpointfrequency
     ~cn:"true" 
-    ~accuracy:4 
     ~checkpointtfs:tfs
     ~charspeedtest:test 
     ~fileind:ind

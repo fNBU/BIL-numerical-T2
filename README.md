@@ -6,4 +6,4 @@ Refer to the files in initial_data to see the form input data should take.
 
 The executable will compile using version 4.11.2 of the OCaml compiler. The required packages are listed in the dune file. Compile simply with the command
 
-dune build galileo.exe
+    dune build galileo.exe
