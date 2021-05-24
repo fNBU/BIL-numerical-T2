@@ -1,5 +1,4 @@
-open Yojson
-open Core
+
 open Core_kernel
 open Lacaml.D
 
@@ -359,10 +358,25 @@ let importdataevo path =
   let filteroutevolution = List.filter ~f:test ( Yojson.Basic.Util.to_assoc jsondata ) in
   { frontmatter = filteroutevolution ; timeframes = frames }
 
+let removebadframes inevo = 
+  let tfs = inevo.timeframes in
+  let test frame = frame.data |> Array.to_list |> Array.concat |> Array.fold ~init:true ~f:( fun a b -> 
+    let c = match Float.classify b with 
+             | Core.Float.Class.Infinite -> false
+             | Core.Float.Class.Nan -> false
+             | _ -> true
+    in
+    a && c
+    )
+  in
+  let newtfs = tfs |> Array.filter ~f:test in
+  { inevo with timeframes = newtfs } 
+
 let jsonextra evolution =
-  let framelist = Array.to_list evolution.timeframes in
+  let nobadframesevo = removebadframes evolution in
+  let framelist = Array.to_list nobadframesevo.timeframes in
   let jsonframelist = List.map framelist ~f:( fun x -> jsonframe x ) in
-    `Assoc ( List.append evolution.frontmatter [ ( "evolution", `List jsonframelist ) ] )
+    `Assoc ( List.append nobadframesevo.frontmatter [ ( "evolution", `List jsonframelist ) ] )
 
 
 (* Here's where the constraints stuff begins. *)
@@ -677,7 +691,8 @@ let mainconstraint
   let lastprinttime  = ref ( timenow () )  in 
   let file = ref fileind in
 
-  while ( ( (!frame).time    < timelimit ) && ( not ( Sys.file_exists_exn "stop" ) ) ) do
+  
+  while begin let open Float in ( ( (!frame).time    < timelimit ) && ( not ( Sys.file_exists "stop" ) ) ) end do
 
     let deltat = 
       let schemeconstant = 
@@ -692,7 +707,7 @@ let mainconstraint
 
     begin
       frame := evolveonestep !frame deltat deltax accuracy ;
-      if ( (!frame).time   > ( !lasttime +. checkpointfrequency ) ) then 
+      if begin let open Float in ( (!frame).time   > ( !lasttime +. checkpointfrequency ) ) end then 
         begin
           evolution := { frontmatter = (!evolution).frontmatter ; timeframes = Array.append (!evolution).timeframes [| !frame |] } ; (* append a new checkpoint *)
           lasttime := (!frame).time ; (* update the last iterator we checkpointed *)
@@ -703,13 +718,14 @@ let mainconstraint
               evolution := evolast !evolution ;
               file := !file + 1 ;
             end ;
-          print_float ( !lasttime );
-          print_newline () ;
-          Time.now () |> Time.to_string |> print_string ;
-          print_newline () ;
-          path |> print_string ;
-          print_newline () ;
-          print_newline () ;
+          let nl = Out_channel.newline stdout in
+          !lasttime |> Float.to_string |> Out_channel.output_string stdout ;
+          nl;
+          Time.now () |> Time.to_string |> Out_channel.output_string stdout ;
+          nl;
+          path |> Out_channel.output_string stdout ;
+          nl;
+          nl;
         end
     end;
 
@@ -737,7 +753,7 @@ let coarsify ~evolution ~sep =
   let outdata = ref [| data.(!lastappend) |] in
   while ( !i < n  ) do
     begin
-    if data.( !i  ).time -. data.( !lastappend ).time >= sep then 
+    if begin let open Float in data.( !i  ).time -. data.( !lastappend ).time >= sep end then 
       begin
         outdata := Array.append !outdata [| data.( !i  ) |] ;
         lastappend := !i ; 
@@ -745,15 +761,11 @@ let coarsify ~evolution ~sep =
     incr i 
     end;
   done;
-  if not ( ( arraytail !outdata ).time = ( arraytail data ).time ) then 
+  if not ( phys_equal ( arraytail !outdata ).time  ( arraytail data ).time ) then 
     begin
       outdata := Array.append !outdata [| arraytail data |] ;
     end;
   { frontmatter = evolution.frontmatter ; timeframes = !outdata }
-
-
-
-
 
 (* Ok, now that we have which, let's directly copy the Mathematica we wrote. *)
 
@@ -762,36 +774,37 @@ let a ( ( ichar , ival ) : index ) ( ( jchar , jval ) : index ) ( ( lchar , lval
     | Some a -> a
     | None   -> 0.0 
   in 
+  let (==) a b = phys_equal a b in
   twhich 
     [
-      ( ( ichar , ival ) = ( Cosine , 0 ) && ( jchar , jval ) = ( lchar , lval ) , 1.0 ) ;
-      ( ( jchar , jval ) = ( Cosine , 0 ) && ( ichar , ival ) = ( lchar , lval ) , 1.0 ) ;
-      ( ichar = jchar && jchar = Cosine ,
+      ( ( ichar , ival ) == ( Cosine , 0 ) && ( jchar , jval ) == ( lchar , lval ) , 1.0 ) ;
+      ( ( jchar , jval ) == ( Cosine , 0 ) && ( ichar , ival ) == ( lchar , lval ) , 1.0 ) ;
+      ( ichar == jchar && jchar == Cosine ,
                               twhich [
-                                       ( lchar = Cosine && lval = ival - jval , 0.5 ) ;
-                                       ( lchar = Cosine && lval = jval - ival , 0.5 ) ;
-                                       ( lchar = Cosine && lval = jval + ival , 0.5 ) ;
+                                       ( lchar == Cosine && lval == ival - jval , 0.5 ) ;
+                                       ( lchar == Cosine && lval == jval - ival , 0.5 ) ;
+                                       ( lchar == Cosine && lval == jval + ival , 0.5 ) ;
                                      ]
                                                                                      ) ;
-      ( ichar = jchar && jchar = Sine ,
+      ( ichar == jchar && jchar == Sine ,
                               twhich [
-                                       ( lchar = Cosine && lval = ival - jval ,  0.5 ) ;
-                                       ( lchar = Cosine && lval = jval - ival ,  0.5 ) ;
-                                       ( lchar = Cosine && lval = jval + ival , -0.5 ) ;
+                                       ( lchar == Cosine && lval == ival - jval ,  0.5 ) ;
+                                       ( lchar == Cosine && lval == jval - ival ,  0.5 ) ;
+                                       ( lchar == Cosine && lval == jval + ival , -0.5 ) ;
                                      ]
                                                                                      ) ;
-      ( ichar = Cosine && jchar = Sine ,
+      ( ichar == Cosine && jchar == Sine ,
                               twhich [
-                                       ( lchar = Sine && lval = ival - jval , -0.5 ) ;
-                                       ( lchar = Sine && lval = jval - ival ,  0.5 ) ;
-                                       ( lchar = Sine && lval = jval + ival ,  0.5 ) ;
+                                       ( lchar == Sine && lval == ival - jval , -0.5 ) ;
+                                       ( lchar == Sine && lval == jval - ival ,  0.5 ) ;
+                                       ( lchar == Sine && lval == jval + ival ,  0.5 ) ;
                                      ]
                                                                                      ) ;
-      ( ichar = Sine && jchar = Cosine ,
+      ( ichar == Sine && jchar == Cosine ,
                               twhich [
-                                       ( lchar = Sine && lval = ival - jval ,  0.5 ) ;
-                                       ( lchar = Sine && lval = jval - ival , -0.5 ) ;
-                                       ( lchar = Sine && lval = jval + ival ,  0.5 ) ;
+                                       ( lchar == Sine && lval == ival - jval ,  0.5 ) ;
+                                       ( lchar == Sine && lval == jval - ival , -0.5 ) ;
+                                       ( lchar == Sine && lval == jval + ival ,  0.5 ) ;
                                      ]
                                                                                      ) ;
     ]
@@ -808,14 +821,15 @@ let d ( ( inchar , inval ) : index ) ( ( outchar , outval ) : index ) =
     | Some a -> a
     | None   -> 0.0 
   in 
+  let (==) a b = phys_equal a b in
   twhich 
     [
       ( outval = 0 , 0.0 ) ;
-      ( inval = outval && not ( inchar = outchar ) , 
+      ( inval = outval && not ( inchar == outchar ) , 
                          twhich 
                            [ 
-                             ( inchar = Cosine , -. float_of_int inval ) ;
-                             ( inchar = Sine , float_of_int inval ) 
+                             ( inchar == Cosine , -. float_of_int inval ) ;
+                             ( inchar == Sine , float_of_int inval ) 
                            ] 
                                                                           )
     ]
@@ -854,7 +868,7 @@ let () = Lacaml.Io.Toplevel.lsc 20
 (* Got the basic form of this from https://stackoverflow.com/a/22132595 
    For lists l1 and l2 and computes the set complement l1\l2            *)
 
-let diff l1 l2 = List.filter ~f:( fun x -> not ( List.mem ~equal:( = ) l2 x ) ) l1
+let diff l1 l2 = List.filter ~f:( fun x -> not ( List.mem ~equal:( phys_equal ) l2 x ) ) l1
 
 (* Make a Lacaml.D matrix from an float array array. *)
 
@@ -901,7 +915,6 @@ let rhsummand ( f , g ) iinds jinds n =
 
 (* Here is where we need the universal definitions of the RHS, LHS, and free indices. *)
 
-
 type lrc = | Left | Right | Constrained
 
 type fn = | P | Pip | Q | Piq | L | Pil
@@ -943,7 +956,7 @@ let inds lrc fn n =
 
 let pget lrc f = 
   let oo fn y i = 
-    match List.exists ( inds lrc fn f.deg ) ( fun x -> x = i ) with
+    match List.exists ( inds lrc fn f.deg ) ( fun x -> phys_equal x i ) with
      | true  -> y i
      | false -> 0.0
   in
@@ -1137,7 +1150,7 @@ let random_soln n x =
        | [] -> true 
        | x::tail -> 
           begin
-          match x < 0.0 with
+          match begin let open Float in x < 0.0 end with
            | true -> false
            | false -> test tail
           end
@@ -1171,8 +1184,8 @@ let random_soln_2 n x =
     in 
     let nsoln = testsoln |> ar_of_solnf |> putfourier |> ( fun x -> generatefirstframe x 10000 ) in
     let points = nsoln.timeframes.(0).data.(5) in
-    let pilmin = points |> Array.fold ~f:min ~init:Float.infinity in
-    let outsoln = match pilmin > 0.0  with
+    let pilmin = points |> Array.fold ~f:Float.min ~init:Float.infinity in
+    let outsoln = match begin let open Float in pilmin > 0.0 end with
                    | true -> testsoln
                    | false ->
     { testsoln with pil = ( fun ( k , i ) -> match ( k , i ) with 
@@ -1229,7 +1242,7 @@ let q_soln i x =
 let take_soln_norm f i x norm =
   let rec h () =
     let test = f i x in
-    match snorm test < norm with
+    match ( let open Float in snorm test < norm ) with
      | true -> test
      | false -> h ()
   in
@@ -1318,7 +1331,7 @@ let processbevline instring =
       | _   -> false
   in
   let filteredstringlist = String.filter instring ~f:isfloat in
-  let istab x = ( if x = '\t' then true else false ) in
+  let istab x = ( if phys_equal x '\t' then true else false ) in
   let filteredstringliststrippedtrailingtab = String.strip filteredstringlist ~drop:istab in
   let stringlist = String.split filteredstringliststrippedtrailingtab ~on:( '\t' ) in
   let floatlist = List.map stringlist ~f:Float.of_string in
@@ -1408,7 +1421,7 @@ let main inputpath =
   let ind = lastind outpath in
   let firstfile = outpath ^ "." ^ ( ind |> Int.to_string ) ^ ".json" in
   let input =
-    match Sys.file_exists_exn firstfile with
+    match Sys.file_exists firstfile with
       | true -> importdataevo firstfile 
       | false -> 
           let inevo = finput in
