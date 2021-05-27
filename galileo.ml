@@ -1217,6 +1217,7 @@ let mainconstraint
           path |> Out_channel.output_string stdout ;
           Out_channel.newline stdout;
           Out_channel.newline stdout;
+          Out_channel.flush stdout
         end
     end;
 
