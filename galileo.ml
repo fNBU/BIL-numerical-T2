@@ -1243,7 +1243,8 @@ let main inputpath =
   let finput = outpath ^ ".json" |> importdataevo in
   let checkpointfrequency = finput |> frontgetdef "print frequency" Yojson.Basic.Util.to_float Float.min_positive_normal_value in
   let n = finput |> frontgetdef "resolution" Yojson.Basic.Util.to_int 0 in
-  let timelimit = ( finput |> frontgetdef "time limit" Yojson.Basic.Util.to_number 0. ) +. checkpointfrequency in
+  let tl = finput |> frontgetdef "time limit" Yojson.Basic.Util.to_number 0. in
+  let timelimit = tl +. checkpointfrequency in
   let size = finput |> frontgetdef "checkpoint size" Yojson.Basic.Util.to_int ( 2.0 ** 29.0 |> Int.of_float ) in
   let tfs = Int.of_float ( approxtimeframes ( Float.of_int n ) ( Float.of_int size ) ) in
 
@@ -1274,18 +1275,30 @@ let main inputpath =
     exp( -1.0 *. t ) *. ( Array.fold pilambda ~init:Float.infinity ~f:Float.min )
   in
 
-  let _ = mainconstraint 
-    ~inevolution:input
-    ~timelimit:timelimit
-    ~checkpointfrequency:checkpointfrequency
-    ~cn:"true" 
-    ~checkpointtfs:tfs
-    ~charspeedtest:test 
-    ~fileind:ind
-    ~path:outpath 
-    ()
-  in
-  ()
+  let lasttime = input.timeframes |> Array.last |> fun x -> x.time in
+ 
+  (*
+  lasttime |> Float.to_string |> Out_channel.output_string stdout ;
+  Out_channel.newline stdout;
+  Out_channel.flush stdout; 
+  *)
+
+  match ( begin let open Float in lasttime > tl end ) || ( Sys.file_exists "stop" ) with
+    | true -> ()
+    | false  -> begin
+        let _ = mainconstraint 
+          ~inevolution:input
+          ~timelimit:timelimit
+          ~checkpointfrequency:checkpointfrequency
+          ~cn:"true" 
+          ~checkpointtfs:tfs
+          ~charspeedtest:test 
+          ~fileind:ind
+          ~path:outpath 
+        ()
+        in
+      ()
+      end
 
 	
 let filename_param =
