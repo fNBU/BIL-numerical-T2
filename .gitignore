@@ -28,7 +28,5 @@ setup.log
 # Local OPAM switch
 _opam/
 
-long_runs
-
 # ocamlfind executables
 a.out
