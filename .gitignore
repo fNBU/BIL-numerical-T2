@@ -29,3 +29,6 @@ setup.log
 _opam/
 
 long_runs
+
+# ocamlfind executables
+a.out
