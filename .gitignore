@@ -30,3 +30,6 @@ _opam/
 
 # ocamlfind executables
 a.out
+
+# galileo.exe lock file
+stop
